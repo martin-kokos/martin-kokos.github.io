@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+
+    <head>
+        <title>Gastro mapa</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="style.css">
+        <style type="text/css" media="screen">
+
+            html, body {
+                height: 100%; margin: 0;
+            }
+
+            #mapid { height: 100%; } 
+
+        </style>
+
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A==" crossorigin=""/>
+        <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js" integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA==" crossorigin=""></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/5.1.3/pixi.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/leaflet-pixi-overlay@1.8.1/L.PixiOverlay.min.js" crossorigin=""></script>
+        <script src="https://d3js.org/d3.v6.min.js"></script>
+
+    </head>
+
+    <body>
+        <div id="mapid" class="cartes">
+            <div class="legend geometry top center hide">
+                <div class="wrapper">
+                    <div class="content">
+                        <div class="name"></div>
+                        <div class="category"></div>
+                        <div class="address"></div>
+                        <div class="payments"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    <script>
+        // config
+        minZoom = 7;
+        defaultZoom = 8; // needs to be within bounds, otherwise 2x points will be spawned
+        maxZoom = 17;
+        defaultMapCenter = [50, 15];
+
+        // JSON loader
+        var getJSON = function(url, successHandler, errorHandler) {
+            var xhr = typeof XMLHttpRequest != 'undefined'
+                ? new XMLHttpRequest()
+                : new ActiveXObject('Microsoft.XMLHTTP');
+            xhr.open('get', url, true);
+            xhr.onreadystatechange = function() {
+                var status;
+                var data;
+                if (xhr.readyState == 4) {
+                    status = xhr.status;
+                    if (status == 200) {
+                        data = JSON.parse(xhr.responseText);
+                        successHandler && successHandler(data);
+                    } else {
+                        errorHandler && errorHandler(status);
+                    }
+                }
+            };
+            xhr.send();
+        };
+
+        // colision solver
+        window.solveCollision = function(circles, opts) {
+            opts = opts || {};
+            var tree = d3.quadtree()
+                .x(function(d) {return d.xp;})
+                .y(function(d) {return d.yp;});
+            if (opts.extent !== undefined) tree.extent(opts.extent);
+            var rMax = 0;
+            circles.forEach(function(circle) {
+                circle.xp = circle.x0;
+                circle.yp = circle.y0;
+                if (opts.r0 !== undefined) circle.r0 = opts.r0;
+                circle.r = circle.r0;
+                circle.xMin = circle.x0 - circle.r0;
+                circle.xMax = circle.x0 + circle.r0;
+                circle.yMin = circle.y0 - circle.r0;
+                circle.yMax = circle.y0 + circle.r0;
+                var colliding = [];
+
+                function collide(d) {
+                    function fixCollision(node) {
+                        var x = d.xp - node.xp;
+                        var y = d.yp - node.yp;
+                        var l = x * x + y * y;
+                        var r = d.r + node.r;
+                        if (l < r * r) {
+                            var nodeClone = {
+                                r: node.r,
+                                xp: node.xp,
+                                yp: node.yp,
+                                from: node,
+                            };
+                            colliding.push(nodeClone);
+                            var c1, c2, lambda1, lambda2, u1, u2;
+                            var delta = Math.sqrt(l);
+                            if (d.r < nodeClone.r) {
+                                c1 = nodeClone; c2 = d;
+                            } else {
+                                c1 = d; c2 = nodeClone;
+                            }
+                            var r1 = c1.r;
+                            var r2 = c2.r;
+                            var alpha = (r1 + r2 + delta) / 4;
+                            if (l > 0) {
+                                u1 = (c2.xp - c1.xp) / delta;
+                                u2 = (c2.yp - c1.yp) / delta;
+                            } else {
+                                // make way at an angle on colision. 0 for horizontal
+                                var theta = 0;
+                                u1 = Math.cos(theta);
+                                u2 = Math.sin(theta);
+                            }
+
+                            if (r2 >= alpha) {
+                                lambda1 = alpha / r1;
+                                lambda2 = alpha / r2;
+                            } else {
+                                lambda1 = (r1 - r2 + delta) / (2 * r1);
+                                lambda2 = 1;
+                            }
+                            c1.r *= lambda1;
+                            c2.r *= lambda2;
+                            c1.xp += (lambda1 - 1) * r1 * u1;
+                            c1.yp += (lambda1 - 1) * r1 * u2;
+                            c2.xp += (1 - lambda2) * r2 * u1;
+                            c2.yp += (1 - lambda2) * r2 * u2;
+                            c1.xMin = c1.xp - c1.r;
+                            c1.xMax = c1.xp + c1.r;
+                            c1.yMin = c1.yp - c1.r;
+                            c1.yMax = c1.yp + c1.r;
+                            c2.xMin = c2.xp - c2.r;
+                            c2.xMax = c2.xp + c2.r;
+                            c2.yMin = c2.yp - c2.r;
+                            c2.yMax = c2.yp + c2.r;
+                        }
+                    }
+                    return function(quad, x1, y1, x2, y2) {
+                        if (!quad.length) {
+                            do {
+                                if (d.xMax > quad.data.xMin && d.xMin < quad.data.xMax && d.yMax > quad.data.yMin && d.yMin < quad.data.yMax) {
+                                    fixCollision(quad.data);
+                                }
+                            } while (quad = quad.next)
+                        }
+                        return x1 > d.xMax + rMax || x2 + rMax < d.xMin || y1 > d.yMax + rMax || y2 + rMax < d.yMin;
+                    };
+                }
+
+                tree.visit(collide(circle));
+                rMax = Math.max(rMax, circle.r);
+                tree.removeAll(colliding.map(function(node) {return node.from;}))
+                var newNodes = colliding.map(function(node) {
+                    var from = node.from;
+                    from.xp = node.xp;
+                    from.yp = node.yp;
+                    from.r = node.r;
+                    from.xMin = node.xMin;
+                    from.xMax = node.xMax;
+                    from.yMin = node.yMin;
+                    from.yMax = node.yMax;
+
+                    return from;
+                });
+                newNodes.push(circle);
+                tree.addAll(newNodes);
+            });
+
+            if (opts.zoom !== undefined) {
+                circles.forEach(function(circle) {
+                    circle.cache = circle.cache || {};
+                    circle.cache[opts.zoom] = {
+                        x: circle.xp,
+                        y: circle.yp,
+                        r: circle.r
+                    };
+                });
+            }
+
+            var rMax2 = 0;
+            circles.forEach(function(circle) {
+                rMax2 = Math.max(rMax2, circle.r);
+            })
+            tree.rMax = rMax2;
+
+            return tree;
+        }
+
+        // map init
+        var loader = new PIXI.Loader();
+        loader
+            .add('fast_food', 'icons/fast_food.png')
+            .add('fast_foodFocused', 'icons/focus-fast_food.png')
+            .add('fast_food_delivery', 'icons/fast_food.png')
+            .add('fast_food_deliveryFocused', 'icons/focus-fast_food.png')
+            .add('restaurant', 'icons/restaurant.png')
+            .add('restaurantFocused', 'icons/focus-restaurant.png')
+            .add('fitness', 'icons/fitness.png')
+            .add('fitnessFocused', 'icons/focus-fitness.png')
+            .add('cinema', 'icons/cinema.png')
+            .add('cinemaFocused', 'icons/focus-cinema.png')
+            .add('supermarket', 'icons/supermarket.png')
+            .add('supermarketFocused', 'icons/focus-supermarket.png')
+            .add('vending_machine', 'icons/vending_machine.png')
+            .add('vending_machineFocused', 'icons/focus-vending_machine.png')
+            .add('language_courses', 'icons/language_courses.png')
+            .add('language_coursesFocused', 'icons/focus-language_courses.png')
+            .add('travel_agency', 'icons/travel_agency.png')
+            .add('travel_agencyFocused', 'icons/focus-travel_agency.png')
+            .add('rehabilitation', 'icons/rehabilitation.png')
+            .add('rehabilitationFocused', 'icons/focus-rehabilitation.png')
+            .add('books', 'icons/books.png')
+            .add('booksFocused', 'icons/focus-books.png')
+            .add('healthcare_facility', 'icons/healthcare_facility.png')
+            .add('healthcare_facilityFocused', 'icons/focus-healthcare_facility.png')
+            .add('hotel', 'icons/hotel.png')
+            .add('hotelFocused', 'icons/focus-hotel.png')
+            .add('driving_school', 'icons/driving_school.png')
+            .add('driving_schoolFocused', 'icons/focus-driving_school.png')
+            .add('optician', 'icons/optician.png')
+            .add('opticianFocused', 'icons/focus-optician.png')
+            .add('pharmacy', 'icons/pharmacy.png')
+            .add('pharmacyFocused', 'icons/focus-pharmacy.png')
+            .add('bowling', 'icons/bowling.png')
+            .add('bowlingFocused', 'icons/focus-bowling.png')
+            .add('health_councel', 'icons/health_councel.png')
+            .add('health_councelFocused', 'icons/focus-health_councel.png')
+            .add('vaccination', 'icons/vaccination.png')
+            .add('vaccinationFocused', 'icons/focus-vaccination.png')
+            .add('escape_game', 'icons/escape_game.png')
+            .add('escape_gameFocused', 'icons/focus-escape_game.png')
+            .add('theatre', 'icons/theatre.png')
+            .add('theatreFocused', 'icons/focus-theatre.png')
+            .add('wellness_beauty', 'icons/wellness_beauty.png')
+            .add('wellness_beautyFocused', 'icons/focus-wellness_beauty.png')
+            .add('adventure_courses', 'icons/adventure_courses.png')
+            .add('adventure_coursesFocused', 'icons/focus-adventure_courses.png')
+            .add('sport_experience', 'icons/sport_experience.png')
+            .add('sport_experienceFocused', 'icons/focus-sport_experience.png')
+
+        document.addEventListener("DOMContentLoaded", function() {
+            loader.load(function(loader, resources) {
+                getJSON('sample.json', function(markers) {
+                    var map = L.map('mapid').setView(defaultMapCenter, defaultZoom);
+                    L.tileLayer('//stamen-tiles-{s}.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {
+                        subdomains: 'abcd',
+                        attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under <a href="http://www.openstreetmap.org/copyright">ODbL</a>.',
+                        minZoom: minZoom,
+                        maxZoom: maxZoom
+                    }).addTo(map);
+                    map.attributionControl.setPosition('bottomleft');
+                    map.zoomControl.setPosition('bottomright');
+                    var legend = document.querySelector('div.legend.geometry');
+                    var legendContent = legend.querySelector('.content');
+                    var pixiLayer = (function() {
+                        var firstDraw = true;
+                        var prevZoom;
+                        var markerSprites = [];
+                        var colorScale = d3.scaleLinear()
+                            .domain([0, 50, 100])
+                            .range(["#c6233c", "#ffd300", "#008000"]);
+
+                        var frame = null;
+                        var focus = null;
+                        var pixiContainer = new PIXI.Container();
+                        var doubleBuffering = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                        return L.pixiOverlay(function(utils) {
+                            var zoom = utils.getMap().getZoom();
+                            if (frame) {
+                                cancelAnimationFrame(frame);
+                                frame = null;
+                            }
+                            var container = utils.getContainer();
+                            var renderer = utils.getRenderer();
+                            var project = utils.latLngToLayerPoint;
+                            var scale = utils.getScale();
+                            var invScale = 1 / scale;
+                            if (firstDraw) {
+                                prevZoom = zoom;
+                                markers.forEach(function(marker) {
+                                    var coords = project([marker.lat, marker.lon]);
+                                    var markerSprite = new PIXI.Sprite(resources[marker.category].texture);
+
+                                    // marker data
+                                    markerSprite.x0 = coords.x;
+                                    markerSprite.y0 = coords.y;
+                                    markerSprite.Name = marker.Name;
+                                    markerSprite.mainCategory = marker.category;
+                                    markerSprite.fullAddr = marker.full_addr;
+                                    markerSprite.gastro = marker.gastro;
+                                    markerSprite.flexi = marker.flexi;
+                                    markerSprite.eVoucher = marker['eVoucher option'];
+
+                                    markerSprite.anchor.set(0.5, 0.5);
+                                    var tint = d3.color(colorScale(marker.avancement || Math.random() * 100)).rgb();
+                                    markerSprite.tint = 256 * (tint.r * 256 + tint.g) + tint.b;
+
+                                    container.addChild(markerSprite);
+                                    markerSprites.push(markerSprite);
+                                });
+
+                                // for each zoomlevel calculate collisions
+                                var quadTrees = {};
+                                for (var z = map.getMinZoom(); z <= map.getMaxZoom(); z++) {
+                                    var rInit = ((z <= defaultZoom) ? 16 : 24) / utils.getScale(z);
+                                    quadTrees[z] = window.solveCollision(markerSprites, {r0: rInit, zoom: z});
+                                }
+
+                                function findMarker(ll) {
+                                    var layerPoint = project(ll);
+                                    var quadTree = quadTrees[utils.getMap().getZoom()];
+                                    var marker;
+                                    var rMax = quadTree.rMax;
+                                    var found = false;
+                                    quadTree.visit(function(quad, x1, y1, x2, y2) {
+                                        if (!quad.length) {
+                                            var dx = quad.data.x - layerPoint.x;
+                                            var dy = quad.data.y - layerPoint.y;
+                                            var r = quad.data.scale.x * 16;
+                                            if (dx * dx + dy * dy <= r * r) {
+                                                marker = quad.data;
+                                                found = true;
+                                            }
+                                        }
+                                        return found || x1 > layerPoint.x + rMax || x2 + rMax < layerPoint.x || y1 > layerPoint.y + rMax || y2 + rMax < layerPoint.y;
+                                    });
+                                    return marker;
+                                }
+                                map.on('click', function(e) {
+                                    var redraw = false;
+                                    if (focus) {
+                                        // map was clicked and marker lost focus
+                                        focus.texture = resources[focus.mainCategory].texture;
+                                        focus = null;
+                                        L.DomUtil.addClass(legend, 'hide');
+                                        //legendContent.innerHTML = '';
+                                        redraw = true;
+                                    }
+                                    var marker = findMarker(e.latlng);
+                                    if (marker) {
+                                        // marker was clicked and is in focus
+                                        marker.texture = resources[marker.mainCategory + 'Focused'].texture;
+                                        focus = marker;
+
+                                        legendContent.querySelector('.name').innerHTML = marker.Name;
+                                        legendContent.querySelector('.category').innerHTML = marker.mainCategory;
+                                        legendContent.querySelector('.address').innerHTML = marker.fullAddr;
+                                        legendContent.querySelector('.payments').innerHTML = marker.gastro + marker.flexi + marker.eVoucher;
+                                        console.log(marker.gastro, marker.flexi, marker.eVoucher)
+
+                                        L.DomUtil.removeClass(legend, 'hide');
+                                        redraw = true;
+                                    }
+                                    if (redraw) utils.getRenderer().render(container);
+                                });
+                                var self = this;
+                                map.on('mousemove', L.Util.throttle(function(e) {
+                                    var marker = findMarker(e.latlng);
+                                    if (marker) {
+                                        L.DomUtil.addClass(self._container, 'leaflet-interactive');
+                                    } else {
+                                        L.DomUtil.removeClass(self._container, 'leaflet-interactive');
+                                    }
+                                }, 32));
+                            }
+                            if (firstDraw || prevZoom !== zoom) {
+                                markerSprites.forEach(function(markerSprite) {
+                                    var position = markerSprite.cache[zoom];
+                                    if (firstDraw) {
+                                        markerSprite.x = position.x;
+                                        markerSprite.y = position.y;
+                                        markerSprite.scale.set((position.r * scale < 16) ? position.r / 16 : invScale);
+                                    } else {
+                                        markerSprite.currentX = markerSprite.x;
+                                        markerSprite.currentY = markerSprite.y;
+                                        markerSprite.targetX = position.x;
+                                        markerSprite.targetY = position.y;
+                                        markerSprite.currentScale = markerSprite.scale.x;
+                                        markerSprite.targetScale = (position.r * scale < 16) ? position.r / 16 : invScale;
+                                    }
+                                });
+                            }
+
+                            var start = null;
+                            var delta = 250;
+                            function animate(timestamp) {
+                                var progress;
+                              if (start === null) start = timestamp;
+                              progress = timestamp - start;
+                              var lambda = progress / delta;
+                              if (lambda > 1) lambda = 1;
+                              lambda = lambda * (0.4 + lambda * (2.2 + lambda * -1.6));
+                              markerSprites.forEach(function(markerSprite) {
+                                  markerSprite.x = markerSprite.currentX + lambda * (markerSprite.targetX - markerSprite.currentX);
+                                  markerSprite.y = markerSprite.currentY + lambda * (markerSprite.targetY - markerSprite.currentY);
+                                  markerSprite.scale.set(markerSprite.currentScale + lambda * (markerSprite.targetScale - markerSprite.currentScale));
+                                });
+                                renderer.render(container);
+                              if (progress < delta) {
+                                frame = requestAnimationFrame(animate);
+                              }
+                            }
+                            if (!firstDraw && prevZoom !== zoom) {
+                                frame = requestAnimationFrame(animate);
+                            }
+                            firstDraw = false;
+                            prevZoom = zoom;
+                            renderer.render(container);
+                        }, pixiContainer, {
+                            doubleBuffering: doubleBuffering,
+                            destroyInteractionManager: true
+                        });
+                    })();
+
+                    pixiLayer.addTo(map);
+                });
+            });
+        });
+
+    </script>
+    </body>
+</html>
