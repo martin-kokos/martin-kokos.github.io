@@ -16,11 +16,11 @@
 
         </style>
 
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A==" crossorigin=""/>
-        <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js" integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA==" crossorigin=""></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/5.1.3/pixi.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/leaflet-pixi-overlay@1.8.1/L.PixiOverlay.min.js" crossorigin=""></script>
-        <script src="https://d3js.org/d3.v6.min.js"></script>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w==" crossorigin=""/>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin=""></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/5.3.12/pixi.min.js" integrity="sha512-Fvs7q5wIAzPgyYNEzppTt3G3/U8FvQwr9WQJHe113FQLX5tIL8uS4m6Rq+04SXf+C3IgorXW4HQzKKVLAGWgFg==" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/leaflet-pixi-overlay@1.9.4/L.PixiOverlay.min.js"  integrity="sha512-XBPD9nxMTb2d/Gck7UxdLYSvxx/03iCqeuRLD7rxkM2B7/ED6PwnIAa9nyPNhy9RdTvEND2VfgE3mvI+3LGIKw==" crossorigin=""></script>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
 
     </head>
 
@@ -250,9 +250,8 @@
             loader.load(function(loader, resources) {
                 getJSON('sample.json', function(markers) {
                     var map = L.map('mapid').setView(defaultMapCenter, defaultZoom);
-                    L.tileLayer('//stamen-tiles-{s}.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {
-                        subdomains: 'abcd',
-                        attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under <a href="http://www.openstreetmap.org/copyright">ODbL</a>.',
+                    L.tileLayer('//tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}.png', {
+                        attribution: 'Map tiles by <a href="http://stadiamaps.com">Stdia Maps</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under <a href="http://www.openstreetmap.org/copyright">ODbL</a>.',
                         minZoom: minZoom,
                         maxZoom: maxZoom
                     }).addTo(map);
